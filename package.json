@@ -1,7 +1,7 @@
 {
   "name": "@maia-id/n8n-nodes-maia-router-chat-action",
-  "version": "1.2.0",
-  "description": "MAIA Router action nodes - Chat, Audio, etc. (Cloud Compatible)",
+  "version": "1.2.4",
+  "description": "MAIA Router action nodes - Chat, Audio, Video, etc. (Cloud Compatible)",
   "keywords": [
     "n8n-community-node-package",
     "n8n",
@@ -18,10 +18,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/maia-id/n8n-nodes-maia-router-action.git"
+    "url": "https://github.com/MAIA-ID/n8n-nodes-maia-router-action.git",
+    "directory": "packages/chat-action"
   },
   "bugs": {
-    "url": "https://github.com/maia-id/n8n-nodes-maia-router-action/issues"
+    "url": "https://github.com/MAIA-ID/n8n-nodes-maia-router-action/issues"
   },
   "main": "index.js",
   "scripts": {
@@ -48,6 +49,7 @@
     ]
   },
   "devDependencies": {
+    "@types/node": "^24.9.2",
     "@typescript-eslint/parser": "^5.0.0",
     "eslint": "^8.0.0",
     "eslint-plugin-n8n-nodes-base": "^1.11.0",
@@ -56,7 +58,7 @@
     "prettier": "^2.7.1",
     "typescript": "^5.9.3"
   },
-  "dependencies": {
-    "n8n-core": "^1.0.0"
+  "peerDependencies": {
+    "n8n-workflow": "*"
   }
 }

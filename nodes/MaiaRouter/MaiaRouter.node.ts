@@ -678,11 +678,10 @@ export class MaiaRouter implements INodeType {
 						name: 'OpenAI Sora 2 Pro',
 						value: 'sora-2-pro',
 					},
-					// Disable until issue bucket fixed
-					// {
-					// 	name: 'Veo 3.0',
-					// 	value: 'veo-3.0-generate-001',
-					// },
+					{
+						name: 'Veo 3.0',
+						value: 'veo-3.0-generate-001',
+					},
 				],
 				default: 'sora-2',
 				required: true,

@@ -14,6 +14,7 @@ Direct API operations with full control:
 - **Chat Completion** - Generate AI responses
 - **Text to Speech** - Convert text to audio
 - **Transcribe** - Convert audio to text
+- **Generate Video** - Create videos from text prompts
 
 ## Installation
 
@@ -63,22 +64,22 @@ npm install @maia-id/n8n-nodes-maia-router-chat-action
 4. Set model: `openai/gpt-4o-mini-transcribe`
 5. Choose audio source (binary data or URL)
 
-## Need AI Agent Support?
+### Generate Video
 
-For LangChain AI Agent support (self-hosted only), install:
-```bash
-@maia-id/n8n-nodes-maia-router-chat-model
-```
+1. Add **MAIA Router** node
+2. Select resource: **Video**
+3. Select operation: **Generate Video**
+4. Set model: `sora-2` or `sora-2-pro`
+5. Enter your text prompt describing the video
+6. Optionally configure:
+   - Size (1280x720, 1920x1080, 720x1280, 1080x1920)
+   - Duration in seconds
 
 ## Resources
 
 - [MAIA Router Documentation](https://maiarouter.ai)
 - [n8n Community Nodes](https://docs.n8n.io/integrations/community-nodes/)
-- [GitHub Repository](https://github.com/maia-id/n8n-nodes-maia-router)
-
-## Support
-
-For issues and feature requests, please visit the [GitHub Issues](https://github.com/maia-id/n8n-nodes-maia-router/issues).
+- [NPM Package](https://www.npmjs.com/package/@maia-id/n8n-nodes-maia-router-chat-action)
 
 ## License
 
