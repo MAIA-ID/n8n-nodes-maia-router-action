@@ -1,6 +1,6 @@
 {
   "name": "@maia-id/n8n-nodes-maia-router-chat-action",
-  "version": "1.2.5",
+  "version": "2.0.0",
   "description": "MAIA Router action nodes - Chat, Audio, Video, etc. (Cloud Compatible)",
   "keywords": [
     "n8n-community-node-package",
