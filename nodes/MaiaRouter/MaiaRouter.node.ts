@@ -658,6 +658,26 @@ export class MaiaRouter implements INodeType {
 				],
 				default: 'textToVideo',
 			},
+			// Video Mode (to work with Wait node)
+			{
+				displayName: 'Mode',
+				name: 'videoMode',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['video'],
+						operation: ['textToVideo'],
+					},
+				},
+				options: [
+					{ name: 'Start', value: 'start', description: 'Start a video generation job and return its ID' },
+					{ name: 'Check Status', value: 'status', description: 'Check the status of a previously started job' },
+					{ name: 'Download', value: 'download', description: 'Download the completed video' },
+				],
+				default: 'start',
+				description: 'Select how this node should behave to pair with the Wait node',
+			},
 			// Video Generation Parameters
 			{
 				displayName: 'Model',
@@ -698,12 +718,31 @@ export class MaiaRouter implements INodeType {
 					show: {
 						resource: ['video'],
 						operation: ['textToVideo'],
+						videoMode: ['start'],
 					},
 				},
 				default: '',
 				required: true,
 				description: 'The text prompt describing the video to generate',
 			},
+			// OpenAI video id for status/download
+			{
+				displayName: 'Video ID',
+				name: 'videoId',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['video'],
+						operation: ['textToVideo'],
+						videoMode: ['status', 'download'],
+					},
+				},
+				default: '',
+				description: 'OpenAI video ID returned from Start (used for Sora/OpenAI-compatible models)',
+			},
+			// Vertex AI operation name for status
+			// Removed explicit Operation Name field; we infer it from previous Start output
+			// Removed explicit Download URL field; URL will be resolved from operation name
 			{
 				displayName: 'Additional Fields',
 				name: 'videoAdditionalFields',
@@ -769,6 +808,13 @@ export class MaiaRouter implements INodeType {
 						type: 'string',
 						default: 'global',
 						description: 'Google Cloud region/location (for Vertex AI models)',
+					},
+					{
+						displayName: 'Resume URL',
+						name: 'resumeUrl',
+						type: 'string',
+						description: 'Optional URL to be called by your backend when the video is ready (e.g., pass $execution.resumeUrl from the Wait node)',
+						default: '',
 					},
 				],
 			},
@@ -1039,277 +1085,155 @@ export class MaiaRouter implements INodeType {
 					const credentials = await this.getCredentials('maiaRouterApi');
 
 					if (operation === 'textToVideo') {
+						const mode = this.getNodeParameter('videoMode', i) as string;
 						const model = this.getNodeParameter('videoModel', i) as string;
-						const prompt = this.getNodeParameter('prompt', i) as string;
 						const additionalFields = this.getNodeParameter('videoAdditionalFields', i) as IDataObject;
-
-						// Detect if this is an OpenAI-compatible model (Sora) or Vertex AI (Veo)
 						const isOpenAI = model.includes('sora') || model.startsWith('openai/');
 
-						if (isOpenAI) {
-							// OpenAI Video Generation API (Sora)
-							// API Flow: POST /v1/videos -> Poll GET /v1/videos/{id} -> Download GET /v1/videos/{id}/content
-							const size = additionalFields.size as string || '1280x720';
-							const seconds = additionalFields.seconds as number || 8;
-
-							const body = {
-								model,
-								prompt,
-								size,
-								seconds: String(seconds), // API expects string "4", "8", or "12"
-							};
-
-							// Step 1: Create video generation job
-							const createOptions = {
-								method: 'POST',
-								headers: {
-									'Authorization': `Bearer ${credentials.apiKey}`,
-								},
-								body: body,
-								url: 'https://api.maiarouter.ai/openai/v1/videos',
-								json: true,
-							};
-
-							const createResponse = await this.helpers.httpRequest(createOptions as IHttpRequestOptions);
-
-							// Extract video ID from response
-							const videoId = createResponse.id;
-							if (!videoId) {
-								throw new NodeOperationError(
-									this.getNode(),
-									'No video ID returned from OpenAI video generation API',
-									{ itemIndex: i },
-								);
-							}
-
-							// Step 2: Poll for video completion
-							let videoComplete = false;
-							let videoStatus = '';
-							let attempts = 0;
-							const maxAttempts = 60; // Poll for up to 10 minutes
-							const pollInterval = 10000; // 10 seconds
-
-							while (!videoComplete && attempts < maxAttempts) {
-								attempts++;
-
-								// Wait before polling
-								await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-								// Check video status
-								const statusOptions = {
-									method: 'GET',
-									headers: {
-										'Authorization': `Bearer ${credentials.apiKey}`,
+						if (mode === 'start') {
+							if (isOpenAI) {
+								const prompt = this.getNodeParameter('prompt', i) as string;
+								const size = additionalFields.size as string || '1280x720';
+								const seconds = additionalFields.seconds as number || 8;
+								const body: IDataObject = { model, prompt, size, seconds: String(seconds) };
+								if (additionalFields.resumeUrl) {
+									body.resume_url = additionalFields.resumeUrl;
+								}
+								const createResponse = await this.helpers.httpRequest({
+									method: 'POST',
+									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
+									body,
+									url: 'https://api.maiarouter.ai/openai/v1/videos',
+									json: true,
+								} as IHttpRequestOptions);
+								returnData.push({
+									json: {
+										success: true,
+										mode,
+										model,
+										prompt,
+										size,
+										seconds,
+										videoId: createResponse.id,
+										status: createResponse.status || 'queued',
 									},
+									pairedItem: { item: i },
+								});
+							} else {
+								const prompt = this.getNodeParameter('prompt', i) as string;
+								const projectId = additionalFields.projectId as string || 'learned-nimbus-473801-q8';
+								const location = additionalFields.location as string || 'global';
+								const sampleCount = parseInt(additionalFields.sampleCount as string || '1');
+								const body = {
+									instances: [{ prompt }],
+									parameters: { storageUri: 'gs://maiarouter/', sampleCount },
+								};
+								const url = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predictLongRunning`;
+								const response = await this.helpers.httpRequest({
+									method: 'POST',
+									headers: { 'x-litellm-api-key': credentials.apiKey as string },
+									body,
+									url,
+									json: true,
+								} as IHttpRequestOptions);
+								returnData.push({
+									json: {
+										success: true,
+										mode,
+										model,
+										prompt,
+										operationName: response.name,
+										status: 'started',
+									},
+									pairedItem: { item: i },
+								});
+							}
+						} else if (mode === 'status') {
+							if (isOpenAI) {
+								const videoId = this.getNodeParameter('videoId', i) as string;
+								if (!videoId) {
+									throw new NodeOperationError(this.getNode(), 'Video ID is required for status check', { itemIndex: i });
+								}
+								const statusResponse = await this.helpers.httpRequest({
+									method: 'GET',
+									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
 									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}`,
 									json: true,
-								};
-
-								const statusResponse = await this.helpers.httpRequest(statusOptions as IHttpRequestOptions);
-								videoStatus = statusResponse.status;
-
-								// Check if video is completed
-								if (videoStatus === 'completed') {
-									videoComplete = true;
-								} else if (videoStatus === 'failed') {
-									throw new NodeOperationError(
-										this.getNode(),
-										`Video generation failed: ${statusResponse.error || 'Unknown error'}`,
-										{ itemIndex: i },
-									);
+								} as IHttpRequestOptions);
+								returnData.push({ json: { mode, model, videoId, ...statusResponse }, pairedItem: { item: i } });
+							} else {
+								const inputItems = this.getInputData();
+								const inferredOpName = ((inputItems[i]?.json as IDataObject)?.operationName as string) || '';
+								const providedOpName = this.getNodeParameter('operationName', i, '') as string;
+								const operationName = providedOpName || inferredOpName;
+								const projectId = additionalFields.projectId as string || 'learned-nimbus-473801-q8';
+								const location = additionalFields.location as string || 'global';
+								if (!operationName) {
+									throw new NodeOperationError(this.getNode(), 'Missing operation name. Pass the previous Start output (operationName) into this node or provide a Download URL.', { itemIndex: i });
 								}
-								// Continue polling if status is 'queued' or 'in_progress'
-							}
-
-							if (!videoComplete) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`Video generation timed out after ${maxAttempts * pollInterval / 1000} seconds. Last status: ${videoStatus}`,
-									{ itemIndex: i },
-								);
-							}
-
-							// Step 3: Download the video using GET /videos/{video_id}/content
-							const videoBuffer = await this.helpers.httpRequest({
-								method: 'GET',
-								headers: {
-									'Authorization': `Bearer ${credentials.apiKey}`,
-								},
-								url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}/content`,
-								encoding: 'arraybuffer',
-							} as IHttpRequestOptions);
-
-							// Prepare binary data
-							const binaryData = await this.helpers.prepareBinaryData(
-								Buffer.from(videoBuffer as ArrayBuffer),
-								'generated-video.mp4',
-								'video/mp4',
-							);
-
-							returnData.push({
-								json: {
-									success: true,
-									model,
-									prompt,
-									size,
-									seconds,
-									videoId,
-									status: 'completed',
-								},
-								binary: {
-									data: binaryData,
-								},
-								pairedItem: { item: i },
-							});
-						} else {
-							// Vertex AI Video Generation (Veo)
-							const projectId = additionalFields.projectId as string || 'learned-nimbus-473801-q8';
-							const location = additionalFields.location as string || 'global';
-							const sampleCount = parseInt(additionalFields.sampleCount as string || '1');
-
-							// Build request body
-							const body = {
-								instances: [{ prompt }],
-								parameters: {
-									storageUri: 'gs://maiarouter/',
-									sampleCount,
-								},
-							};
-
-							// Build dynamic URL
-							const url = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predictLongRunning`;
-
-							// Make API request to start video generation
-							const options = {
-								method: 'POST',
-								headers: {
-									'x-litellm-api-key': credentials.apiKey as string,
-								},
-								body: body,
-								url,
-								json: true,
-							};
-
-							const response = await this.helpers.httpRequest(options as IHttpRequestOptions);
-
-							// Extract operation name from response
-							const operationName = response.name as string;
-
-							if (!operationName) {
-								throw new NodeOperationError(
-									this.getNode(),
-									'No operation name returned from video generation API',
-									{ itemIndex: i },
-								);
-							}
-
-							// Poll the operation status
-							const statusUrl = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:fetchPredictOperation`;
-							let operationComplete = false;
-							let videoUrl = '';
-							let allVideos: any[] = [];
-							let attempts = 0;
-							const maxAttempts = 60; // Poll for up to 10 minutes (60 attempts * 10 seconds)
-							const pollInterval = 10000; // 10 seconds
-
-							while (!operationComplete && attempts < maxAttempts) {
-								attempts++;
-
-								// Wait before polling
-								await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-								// Check operation status with POST request
-								const statusOptions = {
+								const statusUrl = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:fetchPredictOperation`;
+								const statusResponse = await this.helpers.httpRequest({
 									method: 'POST',
-									headers: {
-										'x-litellm-api-key': credentials.apiKey as string,
-									},
-									body: {
-										operationName: operationName,
-									},
+									headers: { 'x-litellm-api-key': credentials.apiKey as string },
+									body: { operationName },
 									url: statusUrl,
 									json: true,
-								};
-
-								const statusResponse = await this.helpers.httpRequest(statusOptions as IHttpRequestOptions);
-
-								// Check if operation is done
-								if (statusResponse.done === true) {
-									operationComplete = true;
-
-									// Check for errors first
-									if (statusResponse.error) {
-										throw new NodeOperationError(
-											this.getNode(),
-											`Video generation failed: ${JSON.stringify(statusResponse.error)}`,
-											{ itemIndex: i },
-										);
-									}
-
-									// Extract videos from response.videos array
-									if (statusResponse.response?.videos && Array.isArray(statusResponse.response.videos)) {
-										allVideos = statusResponse.response.videos;
-										// Get the first video URL
-										if (allVideos.length > 0 && allVideos[0].gcsUri) {
-											videoUrl = allVideos[0].gcsUri;
-										}
+								} as IHttpRequestOptions);
+								let downloadUrl = '';
+								if (statusResponse.response?.videos && Array.isArray(statusResponse.response.videos) && statusResponse.response.videos.length > 0) {
+									const gcsUri = statusResponse.response.videos[0].gcsUri as string;
+									if (gcsUri) {
+										downloadUrl = gcsUri.startsWith('gs://') ? gcsUri.replace('gs://', 'https://storage.googleapis.com/') : gcsUri;
 									}
 								}
+								returnData.push({ json: { mode, model, operationName, downloadUrl, ...statusResponse }, pairedItem: { item: i } });
 							}
-
-							if (!operationComplete) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`Video generation timed out after ${maxAttempts * pollInterval / 1000} seconds`,
-									{ itemIndex: i },
-								);
+						} else if (mode === 'download') {
+							if (isOpenAI) {
+								const videoId = this.getNodeParameter('videoId', i) as string;
+								if (!videoId) {
+									throw new NodeOperationError(this.getNode(), 'Video ID is required for download', { itemIndex: i });
+								}
+								const videoBuffer = await this.helpers.httpRequest({
+									method: 'GET',
+									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
+									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}/content`,
+									encoding: 'arraybuffer',
+								} as IHttpRequestOptions);
+								const binaryData = await this.helpers.prepareBinaryData(Buffer.from(videoBuffer as ArrayBuffer), 'generated-video.mp4', 'video/mp4');
+								returnData.push({ json: { success: true, mode, model, videoId }, binary: { data: binaryData }, pairedItem: { item: i } });
+							} else {
+								let downloadUrl = '';
+								const inputItems = this.getInputData();
+								const inferredOpName = ((inputItems[i]?.json as IDataObject)?.operationName as string) || '';
+								const providedOpName = this.getNodeParameter('operationName', i, '') as string;
+								const operationName = providedOpName || inferredOpName;
+								if (!operationName) {
+									throw new NodeOperationError(this.getNode(), 'Missing operation name. Pass the previous Start output (operationName) for Veo download.', { itemIndex: i });
+								}
+								const projectId = additionalFields.projectId as string || 'learned-nimbus-473801-q8';
+								const location = additionalFields.location as string || 'global';
+								const statusUrl = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:fetchPredictOperation`;
+								const statusResponse = await this.helpers.httpRequest({
+									method: 'POST',
+									headers: { 'x-litellm-api-key': credentials.apiKey as string },
+									body: { operationName },
+									url: statusUrl,
+									json: true,
+								} as IHttpRequestOptions);
+								if (statusResponse.response?.videos && Array.isArray(statusResponse.response.videos) && statusResponse.response.videos.length > 0) {
+									const gcsUri = statusResponse.response.videos[0].gcsUri as string;
+									if (gcsUri) {
+										downloadUrl = gcsUri.startsWith('gs://') ? gcsUri.replace('gs://', 'https://storage.googleapis.com/') : gcsUri;
+									}
+								}
+								if (!downloadUrl) {
+									throw new NodeOperationError(this.getNode(), 'No download URL available', { itemIndex: i });
+								}
+								const videoBuffer = await this.helpers.httpRequest({ method: 'GET', url: downloadUrl, encoding: 'arraybuffer' } as IHttpRequestOptions);
+								const binaryData = await this.helpers.prepareBinaryData(Buffer.from(videoBuffer as ArrayBuffer), 'generated-video.mp4', 'video/mp4');
+								returnData.push({ json: { success: true, mode, model, downloadUrl }, binary: { data: binaryData }, pairedItem: { item: i } });
 							}
-
-							if (!videoUrl) {
-								throw new NodeOperationError(
-									this.getNode(),
-									'No video URL found in completed operation response',
-									{ itemIndex: i },
-								);
-							}
-
-							// Convert gs:// URL to HTTPS URL
-							let downloadUrl = videoUrl;
-							if (videoUrl.startsWith('gs://')) {
-								downloadUrl = videoUrl.replace('gs://', 'https://storage.googleapis.com/');
-							}
-
-							// Download the video
-							const videoBuffer = await this.helpers.httpRequest({
-								method: 'GET',
-								url: downloadUrl,
-								encoding: 'arraybuffer',
-							} as IHttpRequestOptions);
-
-							// Prepare binary data
-							const binaryData = await this.helpers.prepareBinaryData(
-								Buffer.from(videoBuffer as ArrayBuffer),
-								'generated-video.mp4',
-								'video/mp4',
-							);
-
-							returnData.push({
-								json: {
-									success: true,
-									model,
-									prompt,
-									operationName,
-									gcsUri: videoUrl,
-									downloadUrl: downloadUrl,
-									videos: allVideos,
-									totalVideos: allVideos.length,
-									status: 'completed',
-								},
-								binary: {
-									data: binaryData,
-								},
-								pairedItem: { item: i },
-							});
 						}
 					}
 				}
