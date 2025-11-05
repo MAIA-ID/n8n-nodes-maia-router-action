@@ -1126,7 +1126,7 @@ export class MaiaRouter implements INodeType {
 									method: 'POST',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
 									body,
-									url: 'https://api.maiarouter.ai/v1/videos',
+									url: 'https://api.maiarouter.ai/openai/v1/videos',
 									json: true,
 							} as IHttpRequestOptions);
 								returnData.push({
@@ -1180,7 +1180,7 @@ export class MaiaRouter implements INodeType {
 								const statusResponse = await requestWithHandling(this, {
 									method: 'GET',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
-									url: `https://api.maiarouter.ai/v1/videos/${videoId}`,
+									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}`,
 									json: true,
 								} as IHttpRequestOptions);
 								returnData.push({ json: { mode, model, videoId, ...statusResponse }, pairedItem: { item: i } });
@@ -1220,7 +1220,7 @@ export class MaiaRouter implements INodeType {
 								const videoBuffer = await requestWithHandling(this, {
 									method: 'GET',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
-									url: `https://api.maiarouter.ai/v1/videos/${videoId}/content`,
+									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}/content`,
 									encoding: 'arraybuffer',
 								} as IHttpRequestOptions);
 								const binaryData = await this.helpers.prepareBinaryData(Buffer.from(videoBuffer as ArrayBuffer), 'generated-video.mp4', 'video/mp4');
