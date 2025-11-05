@@ -9,6 +9,27 @@ import {
 	IHttpRequestOptions,
 } from 'n8n-workflow';
 
+// Shared HTTP helper with consistent error handling
+async function requestWithHandling(ctx: IExecuteFunctions, options: IHttpRequestOptions): Promise<any> {
+	try {
+		return await ctx.helpers.httpRequest(options as IHttpRequestOptions);
+	} catch (error) {
+		if (typeof error === 'object' && error !== null && 'response' in error) {
+			const err = error as any;
+			const axiosResponse = err.response;
+			ctx.logger.error('API error response: ' + JSON.stringify(axiosResponse?.data ?? axiosResponse));
+			err.message = 'Error: ' + (axiosResponse?.data?.error?.message || err.message);
+		} else if (typeof error === 'object' && error !== null) {
+			const err = error as Error;
+			err.message = 'Error: ' + err.message;
+			ctx.logger.error('error: ' + JSON.stringify(error));
+		} else {
+			ctx.logger.error('Unknown error: ' + String(error));
+		}
+		throw error;
+	}
+}
+
 export class MaiaRouter implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Maia Router',
@@ -821,6 +842,7 @@ export class MaiaRouter implements INodeType {
 		],
 	};
 
+
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
@@ -936,7 +958,7 @@ export class MaiaRouter implements INodeType {
 							json: true,
 						};
 
-						const response = await this.helpers.httpRequest(options as IHttpRequestOptions);
+						const response = await requestWithHandling(this, options as IHttpRequestOptions);
 
 						returnData.push({
 							json: response,
@@ -980,7 +1002,7 @@ export class MaiaRouter implements INodeType {
 							json: true,
 						};
 
-						const response = await this.helpers.httpRequest(options as IHttpRequestOptions);
+						const response = await requestWithHandling(this, options as IHttpRequestOptions);
 
 						// Return audio as binary data
 						const binaryData = await this.helpers.prepareBinaryData(
@@ -1007,6 +1029,11 @@ export class MaiaRouter implements INodeType {
 						const additionalFields = this.getNodeParameter('transcribeAdditionalFields', i) as IDataObject;
 
 						let formData: any = {};
+						// Build a real multipart form using form-data to avoid any transport quirks
+						// We use require here to avoid adding ESM import complexity in n8n runtime
+						// eslint-disable-next-line @typescript-eslint/no-var-requires
+						const FormData = require('form-data');
+						const multipart = new FormData();
 
 						// Handle audio input
 						if (inputDataMode === 'binaryData') {
@@ -1017,64 +1044,60 @@ export class MaiaRouter implements INodeType {
 							const binaryDataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 							// Set up formData with proper file structure
-							formData = {
-								file: {
-									value: binaryDataBuffer,
-									options: {
-										filename: binaryData.fileName || 'audio.mp3',
-										contentType: binaryData.mimeType || 'audio/mpeg',
-									},
-								},
-								model: model,
-							};
+							multipart.append('file', binaryDataBuffer, { filename: binaryData.fileName || 'audio.mp3', contentType: binaryData.mimeType || 'audio/mpeg' });
+							multipart.append('model', model);
 						} else if (inputDataMode === 'url') {
 							// For URL mode, download the file first then upload it
 							const audioUrl = this.getNodeParameter('audioUrl', i) as string;
 
-							const fileBuffer = await this.helpers.httpRequest({
-								method: 'GET',
-								url: audioUrl,
-								encoding: 'arraybuffer',
-							} as IHttpRequestOptions);
+						const fileArrayBuffer = await requestWithHandling(this, {
+									method: 'GET',
+									url: audioUrl,
+									encoding: 'arraybuffer',
+						} as IHttpRequestOptions);
 
-							formData = {
-								file: {
-									value: fileBuffer,
-									options: {
-										filename: 'audio.mp3',
-										contentType: 'audio/mpeg',
-									},
-								},
-								model: model,
-							};
+							const fileBuffer = Buffer.from(fileArrayBuffer as ArrayBuffer);
+
+							multipart.append('file', fileBuffer, { filename: 'audio.mp3', contentType: 'audio/mpeg' });
+							multipart.append('model', model);
 						}
 
 						// Add additional fields as strings
-						if (additionalFields.language) {
-							formData.language = additionalFields.language as string;
-						}
-						if (additionalFields.prompt) {
-							formData.prompt = additionalFields.prompt as string;
-						}
-						if (additionalFields.response_format) {
-							formData.response_format = additionalFields.response_format as string;
-						}
-						if (additionalFields.temperature !== undefined) {
-							formData.temperature = String(additionalFields.temperature);
-						}
+						if (additionalFields.language) multipart.append('language', additionalFields.language as string);
+						if (additionalFields.prompt) multipart.append('prompt', additionalFields.prompt as string);
+						if (additionalFields.response_format) multipart.append('response_format', additionalFields.response_format as string);
+						if (additionalFields.temperature !== undefined) multipart.append('temperature', String(additionalFields.temperature));
 
 						// Make API request
 						const options = {
 							method: 'POST',
 							headers: {
+								...multipart.getHeaders(),
 								'Authorization': `Bearer ${credentials.apiKey}`,
 							},
-							formData: formData,
+							body: multipart,
 							url: 'https://api.maiarouter.ai/v1/audio/transcriptions',
-							json: true,
 						};
 
-						const response = await this.helpers.httpRequest(options as IHttpRequestOptions);
+						let response: any;
+						
+						try {
+							response = await this.helpers.httpRequest(options as IHttpRequestOptions);
+						} catch (error) {
+							if (typeof error === 'object' && error !== null && 'response' in error) {
+								const err = error as any;
+								const axiosResponse = err.response;
+								this.logger.error('API error response: ' + JSON.stringify(axiosResponse?.data ?? axiosResponse));
+								err.message = 'Error: ' + (axiosResponse?.data?.error?.message || err.message);
+							} else if (typeof error === 'object' && error !== null) {
+								const err = error as Error;
+								err.message = 'Error: ' + err.message;
+								this.logger.error('error: ' + JSON.stringify(error));
+							} else {
+								this.logger.error('Unknown error: ' + String(error));
+							}
+							throw error;
+						}
 
 						returnData.push({
 							json: response,
@@ -1099,13 +1122,13 @@ export class MaiaRouter implements INodeType {
 								if (additionalFields.resumeUrl) {
 									body.resume_url = additionalFields.resumeUrl;
 								}
-								const createResponse = await this.helpers.httpRequest({
+							const createResponse = await requestWithHandling(this, {
 									method: 'POST',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
 									body,
-									url: 'https://api.maiarouter.ai/openai/v1/videos',
+									url: 'https://api.maiarouter.ai/v1/videos',
 									json: true,
-								} as IHttpRequestOptions);
+							} as IHttpRequestOptions);
 								returnData.push({
 									json: {
 										success: true,
@@ -1129,7 +1152,7 @@ export class MaiaRouter implements INodeType {
 									parameters: { storageUri: 'gs://maiarouter/', sampleCount },
 								};
 								const url = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predictLongRunning`;
-								const response = await this.helpers.httpRequest({
+								const response = await requestWithHandling(this, {
 									method: 'POST',
 									headers: { 'x-litellm-api-key': credentials.apiKey as string },
 									body,
@@ -1154,10 +1177,10 @@ export class MaiaRouter implements INodeType {
 								if (!videoId) {
 									throw new NodeOperationError(this.getNode(), 'Video ID is required for status check', { itemIndex: i });
 								}
-								const statusResponse = await this.helpers.httpRequest({
+								const statusResponse = await requestWithHandling(this, {
 									method: 'GET',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
-									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}`,
+									url: `https://api.maiarouter.ai/v1/videos/${videoId}`,
 									json: true,
 								} as IHttpRequestOptions);
 								returnData.push({ json: { mode, model, videoId, ...statusResponse }, pairedItem: { item: i } });
@@ -1172,7 +1195,7 @@ export class MaiaRouter implements INodeType {
 									throw new NodeOperationError(this.getNode(), 'Missing operation name. Pass the previous Start output (operationName) into this node or provide a Download URL.', { itemIndex: i });
 								}
 								const statusUrl = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:fetchPredictOperation`;
-								const statusResponse = await this.helpers.httpRequest({
+								const statusResponse = await requestWithHandling(this, {
 									method: 'POST',
 									headers: { 'x-litellm-api-key': credentials.apiKey as string },
 									body: { operationName },
@@ -1194,10 +1217,10 @@ export class MaiaRouter implements INodeType {
 								if (!videoId) {
 									throw new NodeOperationError(this.getNode(), 'Video ID is required for download', { itemIndex: i });
 								}
-								const videoBuffer = await this.helpers.httpRequest({
+								const videoBuffer = await requestWithHandling(this, {
 									method: 'GET',
 									headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
-									url: `https://api.maiarouter.ai/openai/v1/videos/${videoId}/content`,
+									url: `https://api.maiarouter.ai/v1/videos/${videoId}/content`,
 									encoding: 'arraybuffer',
 								} as IHttpRequestOptions);
 								const binaryData = await this.helpers.prepareBinaryData(Buffer.from(videoBuffer as ArrayBuffer), 'generated-video.mp4', 'video/mp4');
@@ -1214,7 +1237,7 @@ export class MaiaRouter implements INodeType {
 								const projectId = additionalFields.projectId as string || 'learned-nimbus-473801-q8';
 								const location = additionalFields.location as string || 'global';
 								const statusUrl = `https://api.maiarouter.ai/vertex_ai/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:fetchPredictOperation`;
-								const statusResponse = await this.helpers.httpRequest({
+								const statusResponse = await requestWithHandling(this, {
 									method: 'POST',
 									headers: { 'x-litellm-api-key': credentials.apiKey as string },
 									body: { operationName },
@@ -1230,7 +1253,7 @@ export class MaiaRouter implements INodeType {
 								if (!downloadUrl) {
 									throw new NodeOperationError(this.getNode(), 'No download URL available', { itemIndex: i });
 								}
-								const videoBuffer = await this.helpers.httpRequest({ method: 'GET', url: downloadUrl, encoding: 'arraybuffer' } as IHttpRequestOptions);
+								const videoBuffer = await requestWithHandling(this, { method: 'GET', url: downloadUrl, encoding: 'arraybuffer' } as IHttpRequestOptions);
 								const binaryData = await this.helpers.prepareBinaryData(Buffer.from(videoBuffer as ArrayBuffer), 'generated-video.mp4', 'video/mp4');
 								returnData.push({ json: { success: true, mode, model, downloadUrl }, binary: { data: binaryData }, pairedItem: { item: i } });
 							}
