@@ -19,7 +19,7 @@ export const getImageProperties = (): INodeProperties[] => [
     { displayName: 'Prompt', name: 'prompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, default: '', required: true, description: 'Text prompt describing the desired image' },
     {
         displayName: 'Additional Fields', name: 'imageAdditionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [
-            { displayName: 'Size', name: 'size', type: 'options', options: [{ name: '256x256', value: '256x256' }, { name: '512x512', value: '512x512' }, { name: '1024x1024', value: '1024x1024' }], default: '1024x1024' },
+            { displayName: 'Size', name: 'size', type: 'options', options: [{ name: '1536x1024 (Landscape)', value: '1536x1024' }, { name: '1024x1024 (Square)', value: '1024x1024' }, { name: '1024x1536 (Portrait)', value: '1024x1536' }], default: '1024x1024' },
             { displayName: 'Response Format', name: 'response_format', type: 'options', options: [{ name: 'URL', value: 'url' }, { name: 'Base64 JSON', value: 'b64_json' }], default: 'url' },
             { displayName: 'N (Number of Images)', name: 'n', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1 },
         ]
