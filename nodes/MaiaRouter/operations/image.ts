@@ -26,14 +26,11 @@ export const getImageProperties = (): INodeProperties[] => [
     },
 
     // Edit Image
-    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }], default: 'openai/gpt-image-1', required: true },
+    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }], default: 'openai/gpt-image-1', required: true },
     { displayName: 'Prompt', name: 'editPrompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, default: '', required: true, description: 'Instruction describing the desired edit' },
     { displayName: 'Input Data Mode', name: 'editInputMode', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'Binary File', value: 'binaryData' }, { name: 'Image URL', value: 'url' }], default: 'binaryData' },
-    { displayName: 'Binary Property', name: 'imageBinaryProperty', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['binaryData'] } }, default: 'image', required: true },
+    { displayName: 'Binary Property', name: 'imageBinaryProperty', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['binaryData'] } }, default: 'data', required: true },
     { displayName: 'Image URL', name: 'imageUrl', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['url'] } }, default: '', required: true },
-    { displayName: 'Use Mask', name: 'useMask', type: 'boolean', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, default: false },
-    { displayName: 'Mask Binary Property', name: 'maskBinaryProperty', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], useMask: [true] } }, default: 'mask' },
-    { displayName: 'Mask URL', name: 'maskUrl', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], useMask: [true] } }, default: '' },
     {
         displayName: 'Additional Fields', name: 'editAdditionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [
             { displayName: 'Size', name: 'size', type: 'options', options: [{ name: '256x256', value: '256x256' }, { name: '512x512', value: '512x512' }, { name: '1024x1024', value: '1024x1024' }], default: '1024x1024' },
@@ -204,7 +201,142 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
         const inputMode = ctx.getNodeParameter('editInputMode', i) as string;
         const additionalFields = ctx.getNodeParameter('editAdditionalFields', i) as IDataObject;
 
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // Handle Gemini model differently
+        if (model === 'maia/gemini-2.5-flash-image-preview') {
+            // Build content array for Gemini
+            const content: any[] = [
+                { type: "text", text: prompt }
+            ];
+
+            // Add main image
+            if (inputMode === 'binaryData') {
+                const imageBinaryProperty = ctx.getNodeParameter('imageBinaryProperty', i) as string;
+                const binaryData = ctx.helpers.assertBinaryData(i, imageBinaryProperty);
+                const imageBuffer = await ctx.helpers.getBinaryDataBuffer(i, imageBinaryProperty);
+                const base64Image = imageBuffer.toString('base64');
+                const mimeType = binaryData.mimeType || 'image/png';
+
+                content.push({
+                    type: "image_url",
+                    image_url: `data:${mimeType};base64,${base64Image}`
+                });
+            } else {
+                const imageUrl = ctx.getNodeParameter('imageUrl', i) as string;
+                if (!imageUrl) throw new NodeOperationError(ctx.getNode(), 'Image URL is required', { itemIndex: i });
+                content.push({
+                    type: "image_url",
+                    image_url: imageUrl
+                });
+            }
+
+
+            const body = {
+                model,
+                messages: [
+                    {
+                        role: "user",
+                        content
+                    }
+                ]
+            };
+
+            const options = {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${credentials.apiKey}` },
+                body,
+                url: 'https://api.maiarouter.ai/v1/chat/completions',
+                json: true,
+            } as IHttpRequestOptions;
+
+            const response = await requestWithHandling(ctx, options);
+
+            // Handle Gemini response format (same as generate image)
+            if (response && response.choices && Array.isArray(response.choices) && response.choices.length > 0) {
+                const choice = response.choices[0];
+                const message = choice.message;
+                const processedImages = [];
+
+                if (message && message.images && Array.isArray(message.images)) {
+                    for (let j = 0; j < message.images.length; j++) {
+                        const imageData = message.images[j];
+                        const processedImage: IDataObject = {
+                            index: imageData.index,
+                            type: imageData.type
+                        };
+
+                        // Convert base64 URL to binary data if present
+                        if (imageData.image_url && imageData.image_url.url) {
+                            try {
+                                const base64Data = imageData.image_url.url.replace(/^data:image\/[a-z]+;base64,/, '');
+                                const imageBuffer = Buffer.from(base64Data, 'base64');
+                                const binaryFileName = `edited-image-${j + 1}.png`;
+                                const binaryItem = await ctx.helpers.prepareBinaryData(
+                                    imageBuffer,
+                                    binaryFileName,
+                                    'image/png'
+                                );
+                                const binaryData: IBinaryKeyData = {};
+                                binaryData[`edited_image_${j + 1}`] = binaryItem;
+                                processedImage.binary_property = `edited_image_${j + 1}`;
+
+                                returnData.push({
+                                    json: {
+                                        id: response.id,
+                                        created: response.created,
+                                        model: response.model,
+                                        object: response.object,
+                                        finish_reason: choice.finish_reason,
+                                        usage: response.usage,
+                                        images: [processedImage],
+                                        total_images: 1,
+                                        thinking_blocks: message?.thinking_blocks || [],
+                                        vertex_ai_grounding_metadata: response.vertex_ai_grounding_metadata,
+                                        vertex_ai_url_context_metadata: response.vertex_ai_url_context_metadata,
+                                        vertex_ai_safety_results: response.vertex_ai_safety_results,
+                                        vertex_ai_citation_metadata: response.vertex_ai_citation_metadata,
+                                        response_type: 'chat/completions',
+                                        operation: 'edit'
+                                    },
+                                    binary: Object.keys(binaryData).length > 0 ? binaryData : undefined,
+                                    pairedItem: { item: i }
+                                });
+                                return;
+                            } catch (error) {
+                                ctx.logger.error(`Failed to process base64 image from Gemini ${j + 1}: ${error}`);
+                                processedImage.error = 'Failed to process base64 image data';
+                            }
+                        }
+                        processedImages.push(processedImage);
+                    }
+                }
+
+                returnData.push({
+                    json: {
+                        id: response.id,
+                        created: response.created,
+                        model: response.model,
+                        object: response.object,
+                        finish_reason: choice.finish_reason,
+                        usage: response.usage,
+                        images: processedImages,
+                        total_images: processedImages.length,
+                        thinking_blocks: message?.thinking_blocks || [],
+                        vertex_ai_grounding_metadata: response.vertex_ai_grounding_metadata,
+                        vertex_ai_url_context_metadata: response.vertex_ai_url_context_metadata,
+                        vertex_ai_safety_results: response.vertex_ai_safety_results,
+                        vertex_ai_citation_metadata: response.vertex_ai_citation_metadata,
+                        response_type: 'chat/completions',
+                        operation: 'edit'
+                    },
+                    pairedItem: { item: i }
+                });
+                return;
+            } else {
+                returnData.push({ json: response, pairedItem: { item: i } });
+                return;
+            }
+        }
+
         const FormData = require('form-data');
         const multipart = new FormData();
 
