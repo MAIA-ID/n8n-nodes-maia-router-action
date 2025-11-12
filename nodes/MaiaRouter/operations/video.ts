@@ -3,13 +3,13 @@ import { requestWithHandling } from '../utils/http';
 
 export const getVideoProperties = (): INodeProperties[] => [
     { displayName: 'Operation', name: 'operation', type: 'options', noDataExpression: true, displayOptions: { show: { resource: ['video'] } }, options: [ { name: 'Generate Video', value: 'generateVideo', action: 'Generate Video', description: 'Generate video from text prompt using AI video models' } ], default: 'generateVideo' },
-    { displayName: 'Mode', name: 'videoMode', type: 'options', noDataExpression: true, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'] } }, options: [ { name: 'Start', value: 'start', description: 'Start a video generation job and return its ID' }, { name: 'Check Status', value: 'status', description: 'Check the status of a previously started job' }, { name: 'Download', value: 'download', description: 'Download the completed video' } ], default: 'start', description: 'Select how this node should behave to pair with the Wait node' },
+    { displayName: 'Mode', name: 'videoMode', type: 'options', noDataExpression: true, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'] } }, options: [ { name: 'Start', value: 'start', description: 'Start a video generation job and return its ID' }, { name: 'Remix', value: 'remix', description: 'Remix an existing video with a new prompt' }, { name: 'Check Status', value: 'status', description: 'Check the status of a previously started job' }, { name: 'Download', value: 'download', description: 'Download the completed video' } ], default: 'start', description: 'Select how this node should behave to pair with the Wait node' },
     { displayName: 'Model', name: 'videoModel', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'] } }, options: [ { name: 'OpenAI Sora 2', value: 'openai/sora-2' }, { name: 'OpenAI Sora 2 Pro', value: 'openai/sora-2-pro' }, { name: 'Veo 3.0', value: 'veo-3.0-generate-001' } ], default: 'openai/sora-2', required: true, description: 'The video generation model to use' },
-    { displayName: 'Prompt', name: 'prompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'] } }, default: '', required: true, description: 'The text prompt describing the video to generate' },
+    { displayName: 'Prompt', name: 'prompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start', 'remix'] } }, default: '', required: true, description: 'The text prompt describing the video to generate' },
     { displayName: 'Input Reference', name: 'inputDataMode', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start']  } }, options: [{ name: 'Binary File', value: 'binaryData' }, { name: 'Image URL', value: 'url' }, { name: 'None', value: '' }], default: '' },
     { displayName: 'Binary Property', name: 'imageBinaryProperty', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'], inputDataMode: ['binaryData'] } }, default: 'data', required: false, description: 'Binary property containing image reference for video generation (Sora 2 Pro only)', hint: 'Use "Add Expression" to select binary data from previous nodes' },
     { displayName: 'Image URL', name: 'imageUrl', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'], inputDataMode: ['url'] } }, default: '', required: false, description: 'Image URL for video generation (Sora 2 Pro only)', placeholder: 'https://example.com/image.jpg' },
-    { displayName: 'Video ID', name: 'videoId', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['status','download'], videoModel: ['openai/sora-2', 'openai/sora-2-pro'] } }, default: '', description: 'OpenAI video ID returned from Start (used for Sora models only)', hint: 'Use this field only for OpenAI Sora models' },
+    { displayName: 'Video ID', name: 'videoId', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['status','download','remix'], videoModel: ['openai/sora-2', 'openai/sora-2-pro'] } }, default: '', description: 'OpenAI video ID returned from Start (used for Sora models only)', hint: 'Use this field only for OpenAI Sora models' },
     { displayName: 'Operation Name', name: 'operationName', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['status','download'], videoModel: ['veo-3.0-generate-001'] } }, default: '', description: 'Vertex AI operation name returned from Start (used for Veo models)', placeholder: 'projects/.../operations/...', hint: 'Required for Veo models when checking status or downloading' },
     { displayName: 'Size', name: 'size', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'] } }, options: [ { name: '1280x720', value: '1280x720' }, { name: '1920x1080', value: '1920x1080' }, { name: '720x1280', value: '720x1280' }, { name: '1080x1920', value: '1080x1920' } ], default: '1280x720' },
     { displayName: 'Duration (Seconds)', name: 'seconds', type: 'options', options: [{ name: '8', value: 8 }, { name: '4', value: 4 }], default: 8, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'] } }, required: false, description: 'Duration of the video in seconds' },
@@ -150,6 +150,42 @@ export async function executeVideo(ctx: IExecuteFunctions, i: number, returnData
             binary: { data: binaryData },
             pairedItem: { item: i }
         });
+        return;
+    }
+
+    if (mode === 'remix') {
+        if (!isOpenAI) {
+            throw new NodeOperationError(ctx.getNode(), 'Remix is only available for OpenAI Sora models', { itemIndex: i });
+        }
+        const videoId = ctx.getNodeParameter('videoId', i) as string;
+        if (!videoId) throw new NodeOperationError(ctx.getNode(), 'Video ID is required for remix', { itemIndex: i });
+        const prompt = ctx.getNodeParameter('prompt', i) as string;
+        if (!prompt) throw new NodeOperationError(ctx.getNode(), 'Prompt is required for remix', { itemIndex: i });
+
+        const remixResponse = await requestWithHandling(ctx, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: { prompt },
+            url: `https://api.maiarouter.ai/v1/videos/${videoId}/remix`,
+            json: true
+        } as IHttpRequestOptions);
+
+        returnData.push({
+            json: {
+                success: true,
+                mode,
+                model,
+                previousVideoId: videoId,
+                prompt,
+                videoId: remixResponse.id,
+                status: remixResponse.status || 'queued'
+            },
+            pairedItem: { item: i }
+        });
+        return;
     }
 }
 
