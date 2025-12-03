@@ -1,5 +1,6 @@
 import { IExecuteFunctions, IDataObject, INodeExecutionData, INodeProperties, IHttpRequestOptions, NodeOperationError, IBinaryKeyData } from 'n8n-workflow';
 import { requestWithHandling } from '../utils/http';
+import { getProvider } from '../utils/helper';
 
 export const getImageProperties = (): INodeProperties[] => [
     {
@@ -15,29 +16,24 @@ export const getImageProperties = (): INodeProperties[] => [
         default: 'generateImage',
     },
     // Generate image
-    { displayName: 'Model', name: 'imageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }], default: 'openai/gpt-image-1', required: true, description: 'ID of the image model to use' },
+    { displayName: 'Model', name: 'imageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true, description: 'ID of the image model to use' },
     { displayName: 'Prompt', name: 'prompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, default: '', required: true, description: 'Text prompt describing the desired image' },
-    {
-        displayName: 'Additional Fields', name: 'imageAdditionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [
-            { displayName: 'Size', name: 'size', type: 'options', options: [{ name: '1536x1024 (Landscape)', value: '1536x1024' }, { name: '1024x1024 (Square)', value: '1024x1024' }, { name: '1024x1536 (Portrait)', value: '1024x1536' }], default: '1024x1024' },
-            { displayName: 'Response Format', name: 'response_format', type: 'options', options: [{ name: 'URL', value: 'url' }, { name: 'Base64 JSON', value: 'b64_json' }], default: 'url' },
-            { displayName: 'N (Number of Images)', name: 'n', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1 },
-        ]
-    },
+    { displayName: 'Aspect Ratio', name: 'aspectRatio', type: 'options',displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['maia/gemini-2.5-flash-image-preview', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)',  value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name:'3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
+    { displayName: 'N (Number of Images)', name: 'n', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1, displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, },
+    { displayName: 'Size', name: 'size', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, options: [{ name: '1536x1024 (Landscape)', value: '1536x1024' }, { name: '1024x1024 (Square)', value: '1024x1024' }, { name: '1024x1536 (Portrait)', value: '1024x1536' }, { name: '1024x1792 (Portrait)', value: '1024x1792' }, { name: '1792x1024 (Landscape)', value: '1792x1024' }], default: '1024x1024' },
+    { displayName: 'Quality', name: 'quality', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, options: [{ name: 'Auto', value: 'auto' }, { name: 'High', value: 'high' }, { name: 'Medium', value: 'medium' }, { name: 'Low', value: 'low' }], default: 'auto' },
 
     // Edit Image
-    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }], default: 'openai/gpt-image-1', required: true },
+    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true },
     { displayName: 'Prompt', name: 'editPrompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, default: '', required: true, description: 'Instruction describing the desired edit' },
     { displayName: 'Input Data Mode', name: 'editInputMode', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'Binary File', value: 'binaryData' }, { name: 'Image URL', value: 'url' }], default: 'binaryData' },
     { displayName: 'Binary Property', name: 'imageBinaryProperty', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['binaryData'] } }, default: 'data', required: true },
     { displayName: 'Image URL', name: 'imageUrl', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['url'] } }, default: '', required: true },
-    {
-        displayName: 'Additional Fields', name: 'editAdditionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [
-            { displayName: 'Size', name: 'size', type: 'options', options: [{ name: '256x256', value: '256x256' }, { name: '512x512', value: '512x512' }, { name: '1024x1024', value: '1024x1024' }], default: '1024x1024' },
-            { displayName: 'Response Format', name: 'response_format', type: 'options', options: [{ name: 'URL', value: 'url' }, { name: 'Base64 JSON', value: 'b64_json' }], default: 'url' },
-            { displayName: 'N (Number of Images)', name: 'n', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1 },
-        ]
-    },
+    { displayName: 'Aspect Ratio', name: 'editAspectRatio', type: 'options',displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['maia/gemini-2.5-flash-image-preview', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)',  value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name:'3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
+    { displayName: 'Quality', name: 'editQuality', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, options: [{ name: 'Auto', value: 'auto' },  { name: 'High', value: 'high' }, { name: 'Medium', value: 'medium' }, { name: 'Low', value: 'low' }], default: 'auto' },
+    { displayName: 'N (Number of Images)', name: 'nEdit', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1, displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, },
+    { displayName: 'Size', name: 'editSize', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, options: [{ name: '256x256', value: '256x256' }, { name: '512x512', value: '512x512' }, { name: '1024x1024', value: '1024x1024' }], default: '1024x1024' },
+   
 ];
 
 export async function executeImage(ctx: IExecuteFunctions, i: number, returnData: INodeExecutionData[]): Promise<void> {
@@ -47,22 +43,26 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
     if (operation === 'generateImage') {
         const model = ctx.getNodeParameter('imageModel', i) as string;
         const prompt = ctx.getNodeParameter('prompt', i) as string;
-        const additionalFields = ctx.getNodeParameter('imageAdditionalFields', i) as IDataObject;
-
+        
         let body: IDataObject = {};
-        if (additionalFields.size) body.size = additionalFields.size;
-        if (additionalFields.response_format) body.response_format = additionalFields.response_format;
-        if (additionalFields.n !== undefined) body.n = additionalFields.n;
-
         let url = '';
-        switch (model) {
-            case 'maia/gemini-2.5-flash-image-preview':
+        const provider = getProvider(model);   
+        switch (provider) {
+            case 'gemini':
                 url = 'https://api.maiarouter.ai/v1/chat/completions';
                 body = { model, messages: [{ role: 'user', content: prompt }] };
+                const aspectRatio = ctx.getNodeParameter('aspectRatio', i) as string;
+                if (aspectRatio) body['imageConfig'] = { ... (body['imageConfig'] as IDataObject || {}), aspectRatio };
                 break;
             default:
-                url = 'https://api.maiarouter.ai/v1/images/generations';
                 body = { model, prompt };
+                const size = ctx.getNodeParameter('size', i) as string;
+                const n = ctx.getNodeParameter('n', i) as number;
+                const quality = ctx.getNodeParameter('quality', i) as string;
+                if (size) body.size = size;
+                if (n !== undefined) body.n = n;        
+                if (quality) body.quality = quality;
+                url = 'https://api.maiarouter.ai/v1/images/generations';
         }
 
         const options = {
@@ -199,15 +199,17 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
         const model = ctx.getNodeParameter('editImageModel', i) as string;
         const prompt = ctx.getNodeParameter('editPrompt', i) as string;
         const inputMode = ctx.getNodeParameter('editInputMode', i) as string;
-        const additionalFields = ctx.getNodeParameter('editAdditionalFields', i) as IDataObject;
-
+        const provider = getProvider(model);
         // Handle Gemini model differently
-        if (model === 'maia/gemini-2.5-flash-image-preview') {
+        if (provider === 'gemini') {
             // Build content array for Gemini
             const content: any[] = [
                 { type: "text", text: prompt }
             ];
 
+            const imageConfig : any = {};
+            const aspectRatio = ctx.getNodeParameter('editAspectRatio', i) as string;
+            if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
             // Add main image
             if (inputMode === 'binaryData') {
                 const imageBinaryProperty = ctx.getNodeParameter('imageBinaryProperty', i) as string;
@@ -237,7 +239,8 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
                         role: "user",
                         content
                     }
-                ]
+                ],
+                ...(imageConfig && Object.keys(imageConfig).length && { imageConfig })
             };
 
             const options = {
@@ -339,6 +342,9 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
 
         const FormData = require('form-data');
         const multipart = new FormData();
+        const size = ctx.getNodeParameter('editSize', i) as string;
+        const n = ctx.getNodeParameter('nEdit', i) as number;
+        const quality = ctx.getNodeParameter('editQuality', i) as string;
 
         // Image
         if (inputMode === 'binaryData') {
@@ -357,9 +363,9 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
         multipart.append('prompt', prompt);
         multipart.append('model', model);
 
-        if (additionalFields.size) multipart.append('size', additionalFields.size as string);
-        if (additionalFields.response_format) multipart.append('response_format', additionalFields.response_format as string);
-        if (additionalFields.n !== undefined) multipart.append('n', String(additionalFields.n));
+        if (size) multipart.append('size', size);
+        if (n !== undefined) multipart.append('n', String(n));
+        if (quality) multipart.append('quality', quality);
 
         const options = {
             method: 'POST',

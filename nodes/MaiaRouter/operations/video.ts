@@ -11,7 +11,8 @@ export const getVideoProperties = (): INodeProperties[] => [
     { displayName: 'Image URL', name: 'imageUrl', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'], inputDataMode: ['url'] } }, default: '', required: false, description: 'Image URL for video generation (Sora 2 Pro only)', placeholder: 'https://example.com/image.jpg' },
     { displayName: 'Video ID', name: 'videoId', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['status','download','remix'], videoModel: ['openai/sora-2', 'openai/sora-2-pro'] } }, default: '', description: 'OpenAI video ID returned from Start (used for Sora models only)', hint: 'Use this field only for OpenAI Sora models' },
     { displayName: 'Operation Name', name: 'operationName', type: 'string', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['status','download'], videoModel: ['veo-3.0-generate-001'] } }, default: '', description: 'Vertex AI operation name returned from Start (used for Veo models)', placeholder: 'projects/.../operations/...', hint: 'Required for Veo models when checking status or downloading' },
-    { displayName: 'Size', name: 'size', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'] } }, options: [ { name: '1280x720', value: '1280x720' }, { name: '1920x1080', value: '1920x1080' }, { name: '720x1280', value: '720x1280' }, { name: '1080x1920', value: '1080x1920' } ], default: '1280x720' },
+    { displayName: 'Aspect Ratio', name: 'aspectRatioVeo', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'], videoModel: ['veo-3.0-generate-001'] } }, options: [ { name: '16:9 (Landscape)', value: '16:9' }, { name: '9:16 (Portrait)',  value: '9:16' } ], default: '16:9' },
+    { displayName: 'Size', name: 'soraSize', type: 'options', displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'], videoModel: ['openai/sora-2', 'openai/sora-2-pro'] } }, options: [ { name: '1280x720', value: '1280x720' }, { name: '720x1280', value: '720x1280' }, { name: '1024x1792', value: '1024x1792' }, { name: '1792x1024', value: '1792x1024' }], default: '1280x720' },
     { displayName: 'Duration (Seconds)', name: 'seconds', type: 'options', options: [{ name: '8', value: 8 }, { name: '4', value: 4 }], default: 8, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'], videoMode: ['start'] } }, required: false, description: 'Duration of the video in seconds' },
     { displayName: 'Additional Fields', name: 'videoAdditionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: { show: { resource: ['video'], operation: ['generateVideo'] } }, options: [ { displayName: 'Sample Count', name: 'sampleCount', type: 'string', default: '1' }, { displayName: 'Location', name: 'location', type: 'string', default: 'global' }, { displayName: 'Resume URL', name: 'resumeUrl', type: 'string', default: '' } ] },
 ];
@@ -26,7 +27,7 @@ export async function executeVideo(ctx: IExecuteFunctions, i: number, returnData
     if (mode === 'start') {
         if (isOpenAI) {
             const prompt = ctx.getNodeParameter('prompt', i) as string;
-            const size = ctx.getNodeParameter('size', i) as string || '1280x720';
+            const size = ctx.getNodeParameter('soraSize', i) as string || '1:1';
             const seconds = ctx.getNodeParameter('seconds', i) as number || 8;
             const FormData = require('form-data');
             const multipart = new FormData();
@@ -51,9 +52,12 @@ export async function executeVideo(ctx: IExecuteFunctions, i: number, returnData
             returnData.push({ json: { success: true, mode, model, prompt, size, seconds, videoId: createResponse.id, status: createResponse.status || 'queued' }, pairedItem: { item: i } });
             return;
         }
+
+        const aspectRatio = ctx.getNodeParameter('aspectRatioVeo', i) as string;
         const prompt = ctx.getNodeParameter('prompt', i) as string;
         const sampleCount = parseInt((additionalFields.sampleCount as string) || '1');
         const body = { instances: [{ prompt }], parameters: { storageUri: 'gs://maiarouter/', sampleCount } };
+        if (aspectRatio) (body.parameters as Record<string, unknown>)['aspectRatio'] = aspectRatio;
         const url = `https://api.maiarouter.ai/vertex_ai/publishers/google/models/${model}:predictLongRunning`;
         const response = await requestWithHandling(ctx, { method: 'POST', headers: { 'x-litellm-api-key': credentials.apiKey as string }, body, url, json: true } as IHttpRequestOptions);
         returnData.push({ json: { success: true, mode, model, prompt, operationName: response.name, status: 'started' }, pairedItem: { item: i } });
