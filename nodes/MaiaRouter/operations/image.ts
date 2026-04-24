@@ -16,24 +16,25 @@ export const getImageProperties = (): INodeProperties[] => [
         default: 'generateImage',
     },
     // Generate image
-    { displayName: 'Model', name: 'imageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true, description: 'ID of the image model to use' },
+    { displayName: 'Model', name: 'imageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true, description: 'ID of the image model to use' },
     { displayName: 'Prompt', name: 'prompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['generateImage'] } }, default: '', required: true, description: 'Text prompt describing the desired image' },
-    { displayName: 'Aspect Ratio', name: 'aspectRatio', type: 'options',displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['maia/gemini-2.5-flash-image-preview', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)',  value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name:'3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
+    { displayName: 'Aspect Ratio', name: 'aspectRatio', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['maia/gemini-2.5-flash-image', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)', value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name: '3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
     { displayName: 'N (Number of Images)', name: 'n', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1, displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, },
     { displayName: 'Size', name: 'size', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, options: [{ name: '1536x1024 (Landscape)', value: '1536x1024' }, { name: '1024x1024 (Square)', value: '1024x1024' }, { name: '1024x1536 (Portrait)', value: '1024x1536' }, { name: '1024x1792 (Portrait)', value: '1024x1792' }, { name: '1792x1024 (Landscape)', value: '1792x1024' }], default: '1024x1024' },
     { displayName: 'Quality', name: 'quality', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['openai/gpt-image-1'] } }, options: [{ name: 'Auto', value: 'auto' }, { name: 'High', value: 'high' }, { name: 'Medium', value: 'medium' }, { name: 'Low', value: 'low' }], default: 'auto' },
+    { displayName: 'Size', name: 'sizeGemini', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['generateImage'], imageModel: ['maia/gemini-2.5-flash-image', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: "1K", "value": "1K" }, { name: "2K", "value": "2K" }, { name: "4K", "value": "4K" }], default: '1K' },
 
     // Edit Image
-    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image-preview' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true },
+    { displayName: 'Model', name: 'editImageModel', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'GPT Image 1', value: 'openai/gpt-image-1' }, { name: 'Gemini Nano Banana', value: 'maia/gemini-2.5-flash-image' }, { name: 'Gemini Nano Banana Pro', value: 'maia/gemini-3-pro-image-preview' }], default: 'openai/gpt-image-1', required: true },
     { displayName: 'Prompt', name: 'editPrompt', type: 'string', typeOptions: { rows: 4 }, displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, default: '', required: true, description: 'Instruction describing the desired edit' },
     { displayName: 'Input Data Mode', name: 'editInputMode', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'] } }, options: [{ name: 'Binary File', value: 'binaryData' }, { name: 'Image URL', value: 'url' }], default: 'binaryData' },
     { displayName: 'Binary Property', name: 'imageBinaryProperty', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['binaryData'] } }, default: 'data', required: true },
     { displayName: 'Image URL', name: 'imageUrl', type: 'string', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editInputMode: ['url'] } }, default: '', required: true },
-    { displayName: 'Aspect Ratio', name: 'editAspectRatio', type: 'options',displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['maia/gemini-2.5-flash-image-preview', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)',  value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name:'3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
-    { displayName: 'Quality', name: 'editQuality', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, options: [{ name: 'Auto', value: 'auto' },  { name: 'High', value: 'high' }, { name: 'Medium', value: 'medium' }, { name: 'Low', value: 'low' }], default: 'auto' },
+    { displayName: 'Aspect Ratio', name: 'editAspectRatio', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['maia/gemini-2.5-flash-image', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: '1:1 (Square)', value: '1:1' }, { name: '9:16 (Portrait)', value: '9:16' }, { name: '16:9 (Landscape)', value: '16:9' }, { name: '3:4 (Portrait)', value: '3:4' }, { name: '4:3 (Landscape)', value: '4:3' }], default: '1:1' },
+    { displayName: 'Quality', name: 'editQuality', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, options: [{ name: 'Auto', value: 'auto' }, { name: 'High', value: 'high' }, { name: 'Medium', value: 'medium' }, { name: 'Low', value: 'low' }], default: 'auto' },
     { displayName: 'N (Number of Images)', name: 'nEdit', type: 'number', typeOptions: { minValue: 1, maxValue: 10 }, default: 1, displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, },
     { displayName: 'Size', name: 'editSize', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['openai/gpt-image-1'] } }, options: [{ name: '256x256', value: '256x256' }, { name: '512x512', value: '512x512' }, { name: '1024x1024', value: '1024x1024' }], default: '1024x1024' },
-   
+    { displayName: 'Size', name: 'editSizeGemini', type: 'options', displayOptions: { show: { resource: ['image'], operation: ['editImage'], editImageModel: ['maia/gemini-2.5-flash-image', 'maia/gemini-3-pro-image-preview'] } }, options: [{ name: "1K", "value": "1K" }, { name: "2K", "value": "2K" }, { name: "4K", "value": "4K" }], default: '1K' },
 ];
 
 export async function executeImage(ctx: IExecuteFunctions, i: number, returnData: INodeExecutionData[]): Promise<void> {
@@ -43,16 +44,18 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
     if (operation === 'generateImage') {
         const model = ctx.getNodeParameter('imageModel', i) as string;
         const prompt = ctx.getNodeParameter('prompt', i) as string;
-        
+
         let body: IDataObject = {};
         let url = '';
-        const provider = getProvider(model);   
+        const provider = getProvider(model);
         switch (provider) {
             case 'gemini':
                 url = 'https://api.maiarouter.ai/v1/chat/completions';
                 body = { model, messages: [{ role: 'user', content: prompt }] };
                 const aspectRatio = ctx.getNodeParameter('aspectRatio', i) as string;
+                const sizeGemini = ctx.getNodeParameter('sizeGemini', i) as string;
                 if (aspectRatio) body['imageConfig'] = { ... (body['imageConfig'] as IDataObject || {}), aspectRatio };
+                if (sizeGemini) body['imageConfig'] = { ... (body['imageConfig'] as IDataObject || {}), image_size: sizeGemini };
                 break;
             default:
                 body = { model, prompt };
@@ -60,7 +63,7 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
                 const n = ctx.getNodeParameter('n', i) as number;
                 const quality = ctx.getNodeParameter('quality', i) as string;
                 if (size) body.size = size;
-                if (n !== undefined) body.n = n;        
+                if (n !== undefined) body.n = n;
                 if (quality) body.quality = quality;
                 url = 'https://api.maiarouter.ai/v1/images/generations';
         }
@@ -207,9 +210,12 @@ export async function executeImage(ctx: IExecuteFunctions, i: number, returnData
                 { type: "text", text: prompt }
             ];
 
-            const imageConfig : any = {};
+            const imageConfig: any = {};
             const aspectRatio = ctx.getNodeParameter('editAspectRatio', i) as string;
+            const editSizeGemini = ctx.getNodeParameter('editSizeGemini', i) as string;
             if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
+            if (editSizeGemini) imageConfig.image_size = editSizeGemini;
+
             // Add main image
             if (inputMode === 'binaryData') {
                 const imageBinaryProperty = ctx.getNodeParameter('imageBinaryProperty', i) as string;
